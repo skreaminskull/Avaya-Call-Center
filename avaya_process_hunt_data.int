@@ -1,0 +1,101 @@
+version "1";
+object 'PARM' "parms" {
+	parms = {
+		{
+			name        = "archiveDir",
+			default     = "/var/opt/DI/dl-dataroot/IMPdata/archive/avaya/hunt_groups",
+			testdefault = "/var/opt/DI/dl-dataroot/IMPdata/archive/avaya/hunt_groups"
+		},
+		{
+			name        = "sourceDir",
+			default     = "/mnt/avaya/hunt groups",
+			testdefault = "/mnt/avaya/hunt groups"
+		},
+		{
+			name        = "buildDir",
+			default     = "/var/opt/DI/dl-dataroot/IMPdata/temp/build/avaya/hunt_groups",
+			testdefault = "/var/opt/DI/dl-dataroot/IMPdata/temp/build/avaya/hunt_groups"
+		}
+	}
+};
+
+object 'TSKL' "Main" {
+	contents = {
+		`Avaya ETL`
+	}
+};
+
+object 'TASK' "Avaya ETL" {
+	inputs    = {
+		`Directory-1-DIR`
+	},
+	output    = `Execrows-1-EXR`,
+	processes = {
+		`nix-CAL`,
+		`filename-SRT`,
+		`arch-CAL`
+	}
+};
+
+object 'INPT' "Directory-1-DIR" {
+	//+ coordinatex = `33`,
+	//+ coordinatey = `8`,
+	input_type  = `directory`,
+	starnames   = { `*.txt`, `*.csv` },
+	directory   = `$sourceDir/`
+};
+
+object 'PROC' "nix-CAL" {
+	//+ coordinatex = `233`,
+	//+ coordinatey = `8`,
+	process_type = `calc`,
+	input        = `filename-SRT`,
+	calcs        = {
+		{
+			name  = `nixPath`,
+			value = `replace(Path," ", "\\ ")`
+		},
+		{
+			name  = `nixFile`,
+			value = `replace(Filename," ", "\\ ")`
+		}
+	}
+};
+
+object 'PROC' "filename-SRT" {
+	//+ coordinatex = `133`,
+	//+ coordinatey = `8`,
+	process_type = `sort`,
+	input        = `Directory-1-DIR`,
+	sort_columns = { `Filename` }
+};
+
+object 'PROC' "arch-CAL" {
+	//+ coordinatex = `333`,
+	//+ coordinatey = `8`,
+	process_type = `calc`,
+	input        = `nix-CAL`,
+	calcs        = {
+		{
+			name  = `archFile`,
+			value = `concat("$(buildDir)","/",nixFile,".bz2")`
+		},
+		{
+			name  = `perlInput`,
+			value = `concat("$buildDir","/",Filename)`
+		}
+	}
+};
+
+object 'OUTP' "Execrows-1-EXR" {
+	//+ coordinatex = `433`,
+	//+ coordinatey = `8`,
+	output_type = `execrows`,
+	input       = `arch-CAL`,
+	commands    = {
+		`mv  $$nixPath $buildDir/`,
+		`perl avaya_summary_hunt_group_parse.pl "$$(perlInput)"`,
+		`bzip2 $buildDir/$$nixFile`,
+		`mv $$archFile $archiveDir/`
+	}
+};

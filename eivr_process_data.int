@@ -1,0 +1,76 @@
+version "1";
+object 'PARM' "parms" {
+	parms = {
+		{
+			name    = "archiveDir",
+			default = "/var/opt/DI/dl-dataroot/IMPdata/archive/eivr-tracelog"
+		},
+		{
+			name    = "sourceDir",
+			default = "/mnt/eivr"
+		},
+		{
+			name    = "buildDir",
+			default = "/var/opt/DI/dl-dataroot/IMPdata/temp/build/eivr"
+		}
+	}
+};
+
+object 'TSKL' "Main" {
+	contents = {
+		`Task_1`
+	}
+};
+
+object 'TASK' "Task_1" {
+	inputs    = {
+		`Directory-1-DIR`
+	},
+	output    = `Execrows-1-EXR`,
+	processes = {
+		`Calc-1-CAL`,
+		`filename-SRT`
+	}
+};
+
+object 'INPT' "Directory-1-DIR" {
+	//+ coordinatex = `33`,
+	//+ coordinatey = `8`,
+	input_type  = `directory`,
+	starname    = `eIVRTrace*.txt`,
+	directory   = `$sourceDir/`
+};
+
+object 'PROC' "Calc-1-CAL" {
+	//+ coordinatex = `233`,
+	//+ coordinatey = `8`,
+	process_type = `calc`,
+	input        = `filename-SRT`,
+	calcs        = {
+		{
+			name  = `archFile`,
+			value = `concat("$(buildDir)","/",Filename,".bz2")`
+		}
+	}
+};
+
+object 'PROC' "filename-SRT" {
+	//+ coordinatex = `133`,
+	//+ coordinatey = `8`,
+	process_type = `sort`,
+	input        = `Directory-1-DIR`,
+	sort_columns = { `Filename` }
+};
+
+object 'OUTP' "Execrows-1-EXR" {
+	//+ coordinatex = `333`,
+	//+ coordinatey = `8`,
+	output_type = `execrows`,
+	input       = `Calc-1-CAL`,
+	commands    = {
+		`mv $$Path $buildDir/`,
+		`perl eIVR_parse.pl $buildDir/$$Filename`,
+		`bzip2 $buildDir/$$Filename`,
+		`mv $$archFile $archiveDir/`
+	}
+};

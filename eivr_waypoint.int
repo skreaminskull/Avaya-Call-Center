@@ -1,0 +1,398 @@
+version "1";
+
+//+ This script contains objects or tasks that have been disabled in Visual Integrator.
+//+ Use Visual Integrator to enable them.
+
+object 'PARM' "parms" {
+	parms = {
+		{
+			name        = "limit",
+			default     = "1",
+			testdefault = "60"
+		},
+		{
+			name        = "ccyymm",
+			testdefault = "201708",
+			default     = "201708"
+		},
+		{
+			name        = "ccyymm_start",
+			default     = "201708",
+			testdefault = "201708"
+		},
+		{
+			name        = "ccyymm_end",
+			default     = "201709",
+			testdefault = "201709"
+		}
+	}
+};
+
+object 'TSKL' "Main" {
+	contents = {
+		`Generate ccyymm List`
+	}
+};
+
+object 'TASK' "Generate ccyymm List" {
+	inputs    = {
+		`range-SQL`
+	},
+	processes = {
+		`range-CAL`
+	},
+	output    = `range-ITE`
+};
+
+object 'INPT' "range-SQL" {
+	//+ notes = `Always build out current month by default`,
+	//+ coordinatex = `33`,
+	//+ coordinatey = `8`,
+	input_type  = `sql`,
+	sql_source  = `callcenter`,
+	sql_query   = `select substring(calldatestart,1,6) as ccyymm \r\n`
+		` from eivr_call_log \r\n`
+		` where calldatestart != ''\r\n`
+		` group by 1 \r\n`
+		` order by 1 desc \r\n`
+		` limit $(limit);`
+};
+
+object 'PROC' "range-CAL" {
+	//+ coordinatex = `108`,
+	//+ coordinatey = `8`,
+	process_type = `calc`,
+	input        = `range-SQL`,
+	calcs        = {
+		{
+			name  = `ccyymm_start`,
+			value = `ccyymm`
+		},
+		{
+			name  = `ccyymm_end`,
+			value = `ccyymm + 000001`
+		}
+	}
+};
+
+object 'OUTP' "range-ITE" {
+	//+ coordinatex = `183`,
+	//+ coordinatey = `8`,
+	output_type  = `iterate`,
+	error_action = `exit`,
+	input        = `range-CAL`,
+	task         = `eIVR Build`,
+	parameters   = { `ccyymm_start`, `ccyymm_end`, `ccyymm` }
+};
+
+object 'TASK' "eIVR Build" {
+	//+ disabled = `true`,
+	inputs    = {
+		`SQL-Call-Log`,
+		`SQL-Call-Details`,
+		`FileIn-Months`
+	},
+	processes = {
+		`Calc-Dates`,
+		`Sort-Log`,
+		`Sort-Details`,
+		`Join-CallID`,
+		`Lookup-Months`,
+		`Calc-Dates-Other`,
+		`Calc-Time`
+	},
+	output    = `Builder-eIVR-Waypoint`
+};
+
+object 'INPT' "SQL-Call-Log" {
+	//+ coordinatex = `33`,
+	//+ coordinatey = `33`,
+	input_type  = `sql`,
+	sql_source  = `callcenter`,
+	sql_query   = `SELECT * \r\n`
+		` FROM eivr_call_log \r\n`
+		` WHERE calldatestart >= '$(ccyymm_start)' and \r\n`
+		`  calldatestart < '$(ccyymm_end)'\r\n`
+		` ORDER BY callid, calldatestart, calltimestart;`,
+	aliases     = {
+		`calldateend=Call Date End`,
+		`calldatestart=Call Date Start`,
+		`callid=Call ID`,
+		`calltimeend=Call Time End`,
+		`calltimestart=Call Time Start`,
+		`channel=Channel`,
+		`client=Client`,
+		`patientage=Patient Age`,
+		`patientdob=Patient DOB`,
+		`patientnumber=Patient Number`,
+		`paymentsystem=Payment System`
+	}
+};
+
+object 'INPT' "SQL-Call-Details" {
+	//+ coordinatex = `33`,
+	//+ coordinatey = `108`,
+	input_type  = `sql`,
+	sql_query   = `SELECT c.callid, \r\n`
+		` MAX(CASE WHEN c.locatorid = '2027' THEN c.locatortime ELSE NULL END) AS "Time: Collect Patient Info",\r\n`
+		` MAX(CASE WHEN c.locatorid = '3031' THEN c.locatortime ELSE NULL END) AS "Time: Get Patient Statement",\r\n`
+		` MAX(CASE WHEN c.locatorid = '3028' THEN c.locatortime ELSE NULL END) AS "Time: Get Patient Balance",\r\n`
+		` MAX(CASE WHEN c.locatorid = '3034' THEN c.locatortime ELSE NULL END) AS "Time: Play Patient Balance",\r\n`
+		` MAX(CASE WHEN c.locatorid = '3029' THEN c.locatortime ELSE NULL END) AS "Time: CSR Transfer",\r\n`
+		` MAX(CASE WHEN c.locatorid = '3032' THEN c.locatortime ELSE NULL END) AS "Time: Make Payment Start",\r\n`
+		` MAX(CASE WHEN c.locatorid = '5039' THEN c.locatortime ELSE NULL END) AS "Time: Play Payment Success",\r\n`
+		` SUM(CASE WHEN c.locatorid = '1000' THEN 1 ELSE 0 end) AS "Call Volume",\r\n`
+		` SUM(CASE WHEN c.locatorid = '2027' THEN 1 ELSE 0 end) AS "Collect Patient Info",\r\n`
+		` SUM(CASE WHEN c.locatorid = '3031' THEN 1 ELSE 0 end) AS "Get Patient Statement",\r\n`
+		` SUM(CASE WHEN c.locatorid = '3028' THEN 1 ELSE 0 end) AS "Get Patient Balance",\r\n`
+		` SUM(CASE WHEN c.locatorid = '3034' THEN 1 ELSE 0 end) AS "Play Patient Balance",\r\n`
+		` SUM(CASE WHEN c.locatorid = '3029' THEN 1 ELSE 0 end) AS "CSR Transfer",\r\n`
+		` SUM(CASE WHEN c.locatorid = '3032' THEN 1 ELSE 0 end) AS "Make Payment Start", \r\n`
+		` SUM(CASE WHEN c.locatorid = '5039' THEN 1 ELSE 0 end) AS "Play Payment Success"\r\n`
+		`FROM eivr_call_details c\r\n`
+		`JOIN eivr_locator_desc d ON d.locatorid = c.locatorid and d.locatoraction = c.locatoraction\r\n`
+		`WHERE locatordate >= '$(ccyymm_start)' and locatordate < '$(ccyymm_end)'\r\n`
+		`GROUP BY c.callid`,
+	sql_source  = `callcenter`,
+	aliases     = {
+		`callid=Call ID`
+	}
+};
+
+object 'INPT' "FileIn-Months" {
+	//+ coordinatex = `383`,
+	//+ coordinatey = `133`,
+	input_type  = `filein`,
+	file_type   = `column_headers`,
+	delimiter   = `\t`,
+	union       = `true`,
+	filename    = `../../DI_TrackIT/data/Months.txt`
+};
+
+object 'PROC' "Calc-Dates" {
+	//+ coordinatex = `133`,
+	//+ coordinatey = `33`,
+	process_type = `calc`,
+	input        = `SQL-Call-Log`,
+	calcs        = {
+		{
+			name  = `Call Date Year-Month`,
+			value = `concat(substr(Call Date Start,1,4), "-", substr(Call Date Start,5,2))`
+		},
+		{
+			name  = `Call Month`,
+			value = `substr(Call Date Start,5,2)`
+		},
+		{
+			name  = `Call Year`,
+			value = `substr(Call Date Start,1,4)`
+		},
+		{
+			name  = `Call Day`,
+			value = `substr(Call Date Start,7,2)`
+		},
+		{
+			name  = `Call Time-Hour`,
+			value = `substr(Call Time Start,1,2)`
+		},
+		{
+			name  = `Call Time-Minute`,
+			value = `substr(Call Time Start,4,2)`
+		},
+		{
+			name   = `Call Date`,
+			value  = `concat(substr(Call Date Start,1,4), "-", substr(Call Date Start,5,2), "-", substr(Call Date Start,7,2))`,
+			update = `true`
+		}
+	}
+};
+
+object 'PROC' "Sort-Log" {
+	//+ coordinatex = `233`,
+	//+ coordinatey = `33`,
+	process_type = `sort`,
+	input        = `Calc-Dates`,
+	sort_columns = { `Call ID` }
+};
+
+object 'PROC' "Sort-Details" {
+	//+ coordinatex = `233`,
+	//+ coordinatey = `108`,
+	process_type = `sort`,
+	input        = `SQL-Call-Details`,
+	sort_columns = { `Call ID` }
+};
+
+object 'PROC' "Join-CallID" {
+	//+ coordinatex = `333`,
+	//+ coordinatey = `58`,
+	process_type = `join`,
+	inputs       = {
+		`Sort-Log`,
+		`Sort-Details`
+	},
+	joins        = { `Call ID`, `Call ID` }
+};
+
+object 'PROC' "Lookup-Months" {
+	//+ coordinatex = `458`,
+	//+ coordinatey = `58`,
+	process_type = `lookup`,
+	inputs       = {
+		`Join-CallID`,
+		`FileIn-Months`
+	},
+	multijoins   = {
+		{`Call Month`, `MonthNum` }
+	}
+};
+
+object 'PROC' "Calc-Dates-Other" {
+	//+ coordinatex = `558`,
+	//+ coordinatey = `58`,
+	process_type = `calc`,
+	input        = `Lookup-Months`,
+	calcs        = {
+		{
+			name  = `Call Month Name`,
+			value = `MonthName`
+		},
+		{
+			name  = `Call Quarter Year-Qtr`,
+			value = `concat(Call Year,"-",Quarter)`
+		},
+		{
+			name  = `Call Week Year-Week`,
+			value = `week_date(concat(Call Year, "-", Call Month, "-", Call Day))`
+		},
+		{
+			name  = `Call Time Hour-Minute`,
+			value = `concat(Call Time-Hour,":",Call Time-Minute)`
+		},
+		{
+			name  = `Day of Week`,
+			value = `mod(date_value(Call Date) -1,7)`
+		},
+		{
+			name  = `Call Day of Week`,
+			value = `concat(if(Day of Week = 0, 7, Day of Week), " - " , day_name(Call Date))`
+		},
+		{
+			name   = `Call Time-Hour`,
+			value  = `concat(lpad(Call Time-Hour,2,"0"),":", "00")`,
+			update = `true`
+		}
+	}
+};
+
+object 'PROC' "Calc-Time" {
+	//+ coordinatex = `658`,
+	//+ coordinatey = `58`,
+	process_type = `calc`,
+	input        = `Calc-Dates-Other`,
+	calcs        = {
+		{
+			name   = `Time: Collect Patient Info`,
+			value  = `time_value(Time: Collect Patient Info)`,
+			update = `true`
+		},
+		{
+			name   = `Time: Get Patient Balance`,
+			value  = `time_value(Time: Get Patient Balance)`,
+			update = `true`
+		},
+		{
+			name   = `Time: Play Patient Balance`,
+			value  = `time_value(Time: Play Patient Balance)`,
+			update = `true`
+		},
+		{
+			name   = `Time: CSR Transfer`,
+			value  = `time_value(Time: CSR Transfer)`,
+			update = `true`
+		},
+		{
+			name   = `Time: Make Payment Start`,
+			value  = `time_value(Time: Make Payment Start)`,
+			update = `true`
+		},
+		{
+			name   = `Time: Play Payment Success`,
+			value  = `time_value(Time: Play Payment Success)`,
+			update = `true`
+		},
+		{
+			name   = `Time: Get Patient Statement`,
+			value  = `time_value(Time: Get Patient Statement)`,
+			update = `true`
+		},
+		{
+			name  = `Time: Call Start`,
+			value = `time_value(Call Time Start)`
+		},
+		{
+			name  = `Time: Call End`,
+			value = `time_value(Call Time End)`
+		}
+	}
+};
+
+object 'OUTP' "Builder-eIVR-Waypoint" {
+	//+ coordinatex = `758`,
+	//+ coordinatey = `58`,
+	output_type = `builder`,
+	input       = `Calc-Time`,
+	builtin     = `true`,
+	dimensions  = {
+		`Client`,
+		`Call ID`,
+		`Call Date`,
+		`Call Date Year-Month`,
+		`Call Time Hour-Minute`,
+		`Call Time-Hour`,
+		`Call Time-Minute`,
+		`Call Day of Week`,
+		`Channel`,
+		`Patient Number`,
+		`Payment System`,
+		`Patient Age`
+	},
+	output      = `../models/eIVR_waypoint_$(ccyymm).mdl`,
+	journal     = `../logs/eivr_waypoint_build_$(ccyymm)`,
+	info        = {
+		`Call Time Start:Call ID`,
+		`Call Time End:Call ID`,
+		`Call Year:Call Date Year-Month`,
+		`Call Month Name:Call Date Year-Month`,
+		`Call Quarter Year-Qtr:Call Date Year-Month`,
+		`Call Week Year-Week:Call Date`
+	},
+	formats     = { `Call Date:YYYY-MM-DD` },
+	summary     = {
+		`Call Volume`,
+		`Collect Patient Info`,
+		`Get Patient Balance`,
+		`Play Patient Balance`,
+		`Get Patient Statement`,
+		`Make Payment Start`,
+		`Play Payment Success`,
+		`CSR Transfer`,
+		`Time: Call Start`,
+		`Time: Call End`,
+		`Time: Collect Patient Info`,
+		`Time: Get Patient Balance`,
+		`Time: Play Patient Balance`,
+		`Time: Get Patient Statement`,
+		`Time: Make Payment Start`,
+		`Time: Play Payment Success`,
+		`Time: CSR Transfer`
+	},
+	dates       = { `Call Date` }
+};
+
+object 'XTSK' "Main" {
+	contents = {
+		`Generate ccyymm List`,
+		`eIVR Build`
+	}
+};

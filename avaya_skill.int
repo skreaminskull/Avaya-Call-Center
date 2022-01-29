@@ -1,0 +1,310 @@
+version "1";
+
+//+ This script contains objects or tasks that have been disabled in Visual Integrator.
+//+ Use Visual Integrator to enable them.
+
+object 'PARM' "parms" {
+	parms = {
+		{
+			name        = "limit",
+			default     = "1",
+			testdefault = "1"
+		},
+		{
+			name        = "ccyymm",
+			default     = "201708",
+			testdefault = "201708"
+		},
+		{
+			name        = "ccyymm_start",
+			default     = "201708",
+			testdefault = "201709"
+		},
+		{
+			name        = "ccyymm_end",
+			default     = "201709",
+			testdefault = "201709"
+		}
+	}
+};
+
+object 'TSKL' "Main" {
+	contents = {
+		`Generate ccyymm List`
+	}
+};
+
+object 'TASK' "Generate ccyymm List" {
+	inputs    = {
+		`range-SQL`
+	},
+	processes = {
+		`range-CAL`
+	},
+	output    = `range-ITE`
+};
+
+object 'INPT' "range-SQL" {
+	//+ notes = `Always build out current month by default`,
+	//+ coordinatex = `33`,
+	//+ coordinatey = `33`,
+	input_type  = `sql`,
+	sql_source  = `callcenter`,
+	sql_query   = `SELECT substring(call_date,1,6) as ccyymm \r\n`
+		` FROM avaya_skill_summary\r\n`
+		` WHERE call_date != ''\r\n`
+		` GROUP BY 1 \r\n`
+		` ORDER BY 1 desc \r\n`
+		` LIMIT $(limit);`
+};
+
+object 'PROC' "range-CAL" {
+	//+ coordinatex = `108`,
+	//+ coordinatey = `33`,
+	process_type = `calc`,
+	input        = `range-SQL`,
+	calcs        = {
+		{
+			name  = `ccyymm_start`,
+			value = `ccyymm`
+		},
+		{
+			name  = `ccyymm_end`,
+			value = `ccyymm + 000001`
+		}
+	}
+};
+
+object 'OUTP' "range-ITE" {
+	//+ coordinatex = `183`,
+	//+ coordinatey = `33`,
+	output_type  = `iterate`,
+	error_action = `exit`,
+	input        = `range-CAL`,
+	task         = `Avaya Skill Build`,
+	parameters   = { `ccyymm_start`, `ccyymm_end`, `ccyymm` }
+};
+
+object 'TASK' "Avaya Skill Build" {
+	//+ disabled = `true`,
+	inputs    = {
+		`SQL-Call-Log-SQL`
+	},
+	processes = {
+		`Dates-CAL`,
+		`Dates-Other-CAL`,
+		`Times-CAL`,
+		`Total-CAL`
+	},
+	output    = `Builder-1-BLD`
+};
+
+object 'INPT' "SQL-Call-Log-SQL" {
+	//+ coordinatex = `33`,
+	//+ coordinatey = `8`,
+	input_type  = `sql`,
+	sql_source  = `callcenter`,
+	sql_query   = `SELECT * \r\n`
+		` FROM avaya_skill_summary \r\n`
+		` WHERE call_date >= '$(ccyymm_start)' and \r\n`
+		`   call_date < '$(ccyymm_end)'\r\n`
+		` ORDER BY skill, call_date, call_hour;`,
+	aliases     = {
+		`abdn_calls=Aband Calls`,
+		`acd_calls=ACD Calls`,
+		`acpt_service_level=Acceptable Service Level`,
+		`avg_abdn_time=Avg Aband Time`,
+		`avg_speed_answered=Avg Speed Answered`,
+		`avg_staff=Avg Staff`,
+		`avg_talk_time=Avg Talk Time`,
+		`call_date=Call Date`,
+		`call_hour=Call Time-Hour`,
+		`flow_in=Flow In`,
+		`flow_out=Flow Out`,
+		`pct_in_svc_level=Pct In Service Level`,
+		`skill=Skill`,
+		`skill_description=Skill Description`,
+		`skill_name=Skill Name`,
+		`switch_name=Switch`,
+		`time_range=`,
+		`total_after_call=Total After Call`,
+		`total_aux_other=Total Aux Other`
+	}
+};
+
+object 'PROC' "Dates-CAL" {
+	//+ coordinatex = `108`,
+	//+ coordinatey = `8`,
+	process_type = `calc`,
+	calcs        = {
+		{
+			name  = `Call Date Year-Month`,
+			value = `concat(substr(Call Date,1,4), "-", substr(Call Date,5,2))`
+		},
+		{
+			name  = `Call Month`,
+			value = `substr(Call Date,5,2)`
+		},
+		{
+			name  = `Call Year`,
+			value = `substr(Call Date,1,4)`
+		},
+		{
+			name  = `Call Day`,
+			value = `substr(Call Date,7,2)`
+		},
+		{
+			name   = `Call Date`,
+			value  = `concat(substr(Call Date,1,4), "-", substr(Call Date,5,2), "-", substr(Call Date,7,2))`,
+			update = `true`
+		}
+	},
+	input        = `SQL-Call-Log-SQL`
+};
+
+object 'PROC' "Dates-Other-CAL" {
+	//+ coordinatex = `183`,
+	//+ coordinatey = `8`,
+	process_type = `calc`,
+	calcs        = {
+		{
+			name  = `Call Month Name`,
+			value = `month_name(Call Date)`
+		},
+		{
+			name  = `Call Quarter Year-Qtr`,
+			value = `concat(Call Year,"-Q",quarter(Call Date))`
+		},
+		{
+			name  = `Call Week Year-Week`,
+			value = `week_date(concat(Call Year, "-", Call Month, "-", Call Day))`
+		},
+		{
+			name  = `Day of Week`,
+			value = `mod(date_value(Call Date) -1,7)`
+		},
+		{
+			name  = `Call Day of Week`,
+			value = `concat(if(Day of Week = 0, 7, Day of Week), " - " , day_name(Call Date))`
+		},
+		{
+			name   = `Call Time-Hour`,
+			value  = `concat(lpad(Call Time-Hour,2,"0"),":", "00")`,
+			update = `true`
+		},
+		{
+			name  = `Skill - Call Date - Time-Hour`,
+			value = `concat(Skill, " - ", Call Date, " @ ", lpad(Call Time-Hour,2,"0"))`
+		}
+	},
+	input        = `Dates-CAL`
+};
+
+object 'PROC' "Times-CAL" {
+	//+ coordinatex = `258`,
+	//+ coordinatey = `8`,
+	process_type = `calc`,
+	input        = `Dates-Other-CAL`,
+	calcs        = {
+		{
+			name  = `Avg Talk Time -TV`,
+			value = `time_value(format_time(Avg Talk Time,"MM:SS"))`
+		},
+		{
+			name  = `Avg Aband Time - TV`,
+			value = `time_value(format_time(Avg Aband Time,"MM:SS"))`
+		},
+		{
+			name  = `Avg Speed Answered - TV`,
+			value = `time_value(format_time(Avg Speed Answered,"MM:SS"))`
+		},
+		{
+			name  = `Total After Call - TV`,
+			value = `time_value(format_time(Total After Call,"MM:SS"))`
+		},
+		{
+			name  = `Total Aux Other - TV`,
+			value = `time_value(format_time(Total Aux Other ,"MM:SS"))`
+		}
+	}
+};
+
+object 'PROC' "Total-CAL" {
+	//+ coordinatex = `333`,
+	//+ coordinatey = `8`,
+	process_type = `calc`,
+	input        = `Times-CAL`,
+	calcs        = {
+		{
+			name  = `Total Aband Time`,
+			value = `Avg Aband Time - TV * Aband Calls`
+		},
+		{
+			name  = `Total Talk Time`,
+			value = `Avg Talk Time -TV * ACD Calls`
+		},
+		{
+			name  = `Total Speed Answered`,
+			value = `Avg Speed Answered - TV * ACD Calls`
+		},
+		{
+			name  = `Skill ID-Name`,
+			value = `concat(Skill, " - ", Skill Name)`
+		}
+	}
+};
+
+object 'OUTP' "Builder-1-BLD" {
+	//+ coordinatex = `408`,
+	//+ coordinatey = `8`,
+	output_type = `builder`,
+	input       = `Total-CAL`,
+	builtin     = `true`,
+	output      = `../models/avaya_skills_summary_$(ccyymm).mdl`,
+	journal     = `../logs/avaya_skills_summary_build_$(ccyymm)`,
+	dimensions  = {
+		`Skill`,
+		`Call Date`,
+		`Call Date Year-Month`,
+		`Call Time-Hour`,
+		`Call Day of Week`,
+		`Skill - Call Date - Time-Hour`
+	},
+	info        = {
+		`Call Week Year-Week:Call Date`,
+		`Call Day:Call Date`,
+		`Call Year:Call Date Year-Month`,
+		`Call Month Name:Call Date Year-Month`,
+		`Call Quarter Year-Qtr:Call Date Year-Month`,
+		`Call Month:Call Date`,
+		`Skill Name:Skill`,
+		`Acceptable Service Level:Skill`,
+		`Avg Speed Answered:Skill - Call Date - Time-Hour`,
+		`Avg Aband Time:Skill - Call Date - Time-Hour`,
+		`Avg Talk Time:Skill - Call Date - Time-Hour`,
+		`Total After Call:Skill - Call Date - Time-Hour`,
+		`Total Aux Other:Skill - Call Date - Time-Hour`,
+		`Avg Staff:Skill - Call Date - Time-Hour`,
+		`Pct In Service Level:Skill - Call Date - Time-Hour`,
+		`Skill Description:Skill`,
+		`Skill ID-Name:Skill`
+	},
+	summary     = {
+		`ACD Calls`,
+		`Aband Calls`,
+		`Flow In`,
+		`Flow Out`,
+		`Total Aband Time`,
+		`Total After Call - TV`,
+		`Total Speed Answered`,
+		`Total Aux Other - TV`,
+		`Total Talk Time`
+	}
+};
+
+object 'XTSK' "Main" {
+	contents = {
+		`Generate ccyymm List`,
+		`Avaya Skill Build`
+	}
+};

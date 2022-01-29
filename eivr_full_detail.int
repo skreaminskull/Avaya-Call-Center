@@ -1,0 +1,213 @@
+version "1";
+object 'TSKL' "Main" {
+	contents = {
+		`Task_1`
+	}
+};
+
+object 'TASK' "Task_1" {
+	inputs    = {
+		`SQL-1-SQL`,
+		`SQL-2-SQL`,
+		`FileIn-Months-FIN`
+	},
+	output    = `Builder-1-BLD`,
+	processes = {
+		`Sort-1-SRT`,
+		`Sort-2-SRT`,
+		`Join-1-JOI`,
+		`CAL-Dates`,
+		`Lookup-Months-LKP`,
+		`CAL-Other`
+	}
+};
+
+object 'INPT' "SQL-1-SQL" {
+	//+ coordinatex = `33`,
+	//+ coordinatey = `8`,
+	input_type  = `sql`,
+	sql_source  = `callcenter`,
+	sql_query   = `select * from eivr_call_log order by callid, calldate, calltimestart;`,
+	aliases     = {
+		`calldate=Call Date`,
+		`callid=Call ID`,
+		`calltimeend=Call Time End`,
+		`calltimestart=Call Time Start`,
+		`channel=Channel`,
+		`client=Client`,
+		`patientage=Patient Age`,
+		`patientdob=Patient DOB`,
+		`patientnumber=Patient Number`,
+		`paymentsystem=Payment System`
+	}
+};
+
+object 'INPT' "SQL-2-SQL" {
+	//+ coordinatex = `33`,
+	//+ coordinatey = `83`,
+	input_type  = `sql`,
+	sql_query   = `select a.*, b.locatordesc from eivr_call_details a left join eivr_locator_desc`
+		` b on a.locatorid = b.locatorid and a.locatoraction = b.locatoraction order`
+		` by a.callid, a.id`,
+	sql_source  = `callcenter`,
+	aliases     = {
+		`callid=Call ID`,
+		`locatoraction=Locator Action`,
+		`locatordesc=Locator Description`,
+		`locatorid=Locator ID`,
+		`locatortime=Loctor Time`
+	}
+};
+
+object 'INPT' "FileIn-Months-FIN" {
+	//+ coordinatex = `358`,
+	//+ coordinatey = `108`,
+	input_type  = `filein`,
+	file_type   = `column_headers`,
+	delimiter   = `\t`,
+	union       = `true`,
+	filename    = `../../DI_TrackIT/data/Months.txt`
+};
+
+object 'PROC' "Sort-1-SRT" {
+	//+ coordinatex = `233`,
+	//+ coordinatey = `8`,
+	process_type = `sort`,
+	input        = `CAL-Dates`,
+	sort_columns = { `Call ID` }
+};
+
+object 'PROC' "Sort-2-SRT" {
+	//+ coordinatex = `233`,
+	//+ coordinatey = `83`,
+	process_type = `sort`,
+	input        = `SQL-2-SQL`,
+	sort_columns = { `Call ID` }
+};
+
+object 'PROC' "Join-1-JOI" {
+	//+ coordinatex = `333`,
+	//+ coordinatey = `33`,
+	process_type = `join`,
+	inputs       = {
+		`Sort-1-SRT`,
+		`Sort-2-SRT`
+	},
+	joins        = { `Call ID`, `Call ID` }
+};
+
+object 'PROC' "CAL-Dates" {
+	//+ coordinatex = `133`,
+	//+ coordinatey = `8`,
+	process_type = `calc`,
+	calcs        = {
+		{
+			name  = `Call Date Year-Month`,
+			value = `concat(substr(Call Date,1,4), "-", substr(Call Date,5,2))`
+		},
+		{
+			name  = `Call Month`,
+			value = `substr(Call Date,5,2)`
+		},
+		{
+			name  = `Call Year`,
+			value = `substr(Call Date,1,4)`
+		},
+		{
+			name  = `Call Day`,
+			value = `substr(Call Date,7,2)`
+		},
+		{
+			name  = `Call Time-Hour`,
+			value = `substr(Call Time Start,1,2)`
+		},
+		{
+			name  = `Call Time-Minute`,
+			value = `substr(Call Time Start,4,2)`
+		},
+		{
+			name   = `Call Date`,
+			value  = `concat(substr(Call Date,1,4), "-", substr(Call Date,5,2), "-", substr(Call`
+				` Date,7,2))`,
+			update = `true`
+		}
+	},
+	input        = `SQL-1-SQL`
+};
+
+object 'PROC' "Lookup-Months-LKP" {
+	//+ coordinatex = `433`,
+	//+ coordinatey = `33`,
+	process_type = `lookup`,
+	inputs       = {
+		`Join-1-JOI`,
+		`FileIn-Months-FIN`
+	},
+	multijoins   = {
+		{`Call Month`, `MonthNum` }
+	}
+};
+
+object 'PROC' "CAL-Other" {
+	//+ coordinatex = `533`,
+	//+ coordinatey = `33`,
+	process_type = `calc`,
+	input        = `Lookup-Months-LKP`,
+	calcs        = {
+		{
+			name  = `Call Month Name`,
+			value = `MonthName`
+		},
+		{
+			name  = `Call Quarter Year-Qtr`,
+			value = `concat(Call Year,"-",Quarter)`
+		},
+		{
+			name  = `Call Week Year-Week`,
+			value = `week_date(concat(Call Year, "-", Call Month, "-", Call Day))`
+		},
+		{
+			name  = `Locator ID-Desc`,
+			value = `concat(Locator ID, "-", if(Locator Description = "",Locator Action,  Locator`
+				` Description))`
+		}
+	}
+};
+
+object 'OUTP' "Builder-1-BLD" {
+	//+ coordinatex = `633`,
+	//+ coordinatey = `33`,
+	output_type = `builder`,
+	input       = `CAL-Other`,
+	builtin     = `true`,
+	dimensions  = {
+		`Call Date Year-Month`,
+		`Client`,
+		`Call ID`,
+		`Channel`,
+		`Patient Number`,
+		`Call Date`,
+		`Call Time-Hour`,
+		`Call Time-Minute`,
+		`Patient Age`,
+		`Payment System`,
+		`Locator ID-Desc`
+	},
+	output      = `../models/eIVR.mdl`,
+	journal     = `../logs/eivr_build`,
+	info        = {
+		`Patient Age:Patient Number`,
+		`Call Time Start:Call ID`,
+		`Call Time End:Call ID`,
+		`Call Year:Call Date Year-Month`,
+		`Call Month Name:Call Date Year-Month`,
+		`Call Quarter Year-Qtr:Call Date Year-Month`,
+		`Call Week Year-Week:Call Date`,
+		`Locator Action:Locator ID-Desc`,
+		`Locator ID:Locator ID-Desc`,
+		`Locator Description:Locator ID-Desc`,
+		`Loctor Time:Locator ID-Desc`
+	},
+	dates       = { `Call Date` },
+	formats     = { `Call Date:YYYYMMDD` }
+};

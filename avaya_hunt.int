@@ -1,0 +1,197 @@
+version "1";
+object 'TSKL' "Main" {
+	contents = {
+		`Avaya Hunt Build`
+	}
+};
+
+object 'TASK' "Avaya Hunt Build" {
+	inputs    = {
+		`SQL-Call-Log-SQL`,
+		`List-1-LST`
+	},
+	processes = {
+		`Dates-CAL`,
+		`Dates-Other-CAL`,
+		`parseTimeStamp-CAL`,
+		`Lookup-1-LKP`
+	},
+	output    = `hunt-BLD`
+};
+
+object 'INPT' "SQL-Call-Log-SQL" {
+	//+ coordinatex = `33`,
+	//+ coordinatey = `8`,
+	input_type  = `sql`,
+	sql_source  = `callcenter`,
+	sql_query   = `select * from avaya_hunt_group_summary `,
+	aliases     = {
+		`calls_abandon=Aband Calls`,
+		`calls_answered=Calls Answered`,
+		`calls_queue=Calls Queue`,
+		`group_name=Group Name`,
+		`group_num=Group Number`,
+		`group_size=Group Size`,
+		`group_type=Group Type`,
+		`queue=Queue`,
+		`queue_overflow=Queue Overflow`,
+		`speed_answer=Speed Answered`,
+		`switch_name=Switch`,
+		`time_avail=Time Available`,
+		`time_range=`,
+		`total_usage=Total Usage`
+	}
+};
+
+object 'INPT' "List-1-LST" {
+	//+ coordinatex = `108`,
+	//+ coordinatey = `83`,
+	input_type  = `list`,
+	columns     = { `Month Short Name`, `Month Num` },
+	values      = {
+		{`JAN`, `01` },
+		{`FEB`, `02` },
+		{`MAR`, `03` },
+		{`APR`, `04` },
+		{`MAY`, `05` },
+		{`JUN`, `06` },
+		{`JUL`, `07` },
+		{`AUG`, `08` },
+		{`SEP`, `09` },
+		{`OCT`, `10` },
+		{`NOV`, `11` },
+		{`DEC`, `12` }
+	}
+};
+
+object 'PROC' "Dates-CAL" {
+	//+ coordinatex = `283`,
+	//+ coordinatey = `8`,
+	process_type = `calc`,
+	calcs        = {
+		{
+			name   = `Call Month`,
+			value  = `Month Num`,
+			update = `true`
+		},
+		{
+			name   = `Call Date`,
+			value  = `concat(Call Year, "-", Call Month, "-", Call Day)`,
+			update = `true`
+		},
+		{
+			name  = `Call Date Year-Month`,
+			value = `concat(Call Year, "-", Call Month)`
+		}
+	},
+	input        = `Lookup-1-LKP`
+};
+
+object 'PROC' "Dates-Other-CAL" {
+	//+ coordinatex = `358`,
+	//+ coordinatey = `8`,
+	process_type = `calc`,
+	calcs        = {
+		{
+			name  = `Call Month Name`,
+			value = `month_name(Call Date)`
+		},
+		{
+			name  = `Call Quarter Year-Qtr`,
+			value = `concat(Call Year,"-Q",quarter(Call Date))`
+		},
+		{
+			name  = `Call Week Year-Week`,
+			value = `week_date(concat(Call Year, "-", Call Month, "-", Call Day))`
+		},
+		{
+			name  = `Day of Week`,
+			value = `mod(date_value(Call Date) -1,7)`
+		},
+		{
+			name  = `Call Day of Week`,
+			value = `concat(if(Day of Week = 0, 7, Day of Week), " - " , day_name(Call Date))`
+		},
+		{
+			name  = `Measure Hour Temp`,
+			value = `lpad(measure_hour,4,"0")`
+		},
+		{
+			name   = `Call Time-Hour`,
+			value  = `concat(substr(Measure Hour Temp,1,2),":",substr(Measure Hour Temp,3,2))`,
+			update = `true`
+		}
+	},
+	input        = `Dates-CAL`
+};
+
+object 'PROC' "parseTimeStamp-CAL" {
+	//+ coordinatex = `108`,
+	//+ coordinatey = `8`,
+	process_type = `calc`,
+	input        = `SQL-Call-Log-SQL`,
+	calcs        = {
+		{
+			name  = `Call Month - Temp`,
+			value = `scan(report_timestamp,5," ")`
+		},
+		{
+			name  = `Call Day`,
+			value = `lpad(replace(scan(report_timestamp,6," "),",",""),2,"0")`
+		},
+		{
+			name  = `Call Year`,
+			value = `scan(report_timestamp,7," ")`
+		}
+	}
+};
+
+object 'PROC' "Lookup-1-LKP" {
+	//+ coordinatex = `208`,
+	//+ coordinatey = `8`,
+	process_type = `lookup`,
+	inputs       = {
+		`parseTimeStamp-CAL`,
+		`List-1-LST`
+	},
+	multijoins   = {
+		{`Call Month - Temp`, `Month Short Name` }
+	}
+};
+
+object 'OUTP' "hunt-BLD" {
+	//+ coordinatex = `433`,
+	//+ coordinatey = `8`,
+	output_type = `builder`,
+	input       = `Dates-Other-CAL`,
+	builtin     = `true`,
+	output      = `../models/avaya_hunt_summary.mdl`,
+	journal     = `../logs/avaya_hunt_summary_build`,
+	dimensions  = {
+		`Group Number`,
+		`Group Name`,
+		`Group Type`,
+		`Call Date`,
+		`Call Date Year-Month`,
+		`Call Time-Hour`,
+		`Call Day of Week`
+	},
+	summary     = {
+		`Group Size`,
+		`Total Usage`,
+		`Calls Answered`,
+		`Calls Queue`,
+		`Queue Overflow`,
+		`Time Available`,
+		`Speed Answered`,
+		`Aband Calls`
+	},
+	info        = {
+		`Call Week Year-Week:Call Date`,
+		`Call Day:Call Date`,
+		`Call Year:Call Date Year-Month`,
+		`Call Quarter Year-Qtr:Call Date Year-Month`,
+		`Call Month Name:Call Date Year-Month`,
+		`Call Month:Call Date`
+	}
+};

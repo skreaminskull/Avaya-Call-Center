@@ -1,0 +1,371 @@
+version "1";
+
+//+ This script contains objects or tasks that have been disabled in Visual Integrator.
+//+ Use Visual Integrator to enable them.
+
+object 'PARM' "parms" {
+	parms = {
+		{
+			name        = "limit",
+			default     = "1",
+			testdefault = "60"
+		},
+		{
+			name        = "ccyymm",
+			default     = "201708",
+			testdefault = "201708"
+		},
+		{
+			name        = "ccyymm_end",
+			default     = "201709",
+			testdefault = "201709"
+		},
+		{
+			name        = "ccyymm_start",
+			testdefault = "201708",
+			default     = "201708"
+		}
+	}
+};
+
+object 'TSKL' "Main" {
+	contents = {
+		`Generate ccyymm List`
+	}
+};
+
+object 'TASK' "Generate ccyymm List" {
+	inputs    = {
+		`range-SQL`
+	},
+	processes = {
+		`range-CAL`
+	},
+	output    = `range-ITE`
+};
+
+object 'INPT' "range-SQL" {
+	//+ notes = `Always build out current month by default`,
+	//+ coordinatex = `33`,
+	//+ coordinatey = `8`,
+	input_type  = `sql`,
+	sql_source  = `callcenter`,
+	sql_query   = `select substring(call_date,1,6) as ccyymm \r\n`
+		` from avaya_daily_summary\r\n`
+		` where call_date != ''\r\n`
+		` group by 1 \r\n`
+		` order by 1 desc \r\n`
+		` limit $(limit);`
+};
+
+object 'PROC' "range-CAL" {
+	//+ coordinatex = `108`,
+	//+ coordinatey = `8`,
+	process_type = `calc`,
+	input        = `range-SQL`,
+	calcs        = {
+		{
+			name  = `ccyymm_start`,
+			value = `ccyymm`
+		},
+		{
+			name  = `ccyymm_end`,
+			value = `ccyymm + 000001`
+		}
+	}
+};
+
+object 'OUTP' "range-ITE" {
+	//+ coordinatex = `183`,
+	//+ coordinatey = `8`,
+	output_type  = `iterate`,
+	error_action = `exit`,
+	input        = `range-CAL`,
+	task         = `Avaya Summary Build`,
+	parameters   = { `ccyymm_start`, `ccyymm_end`, `ccyymm` }
+};
+
+object 'TASK' "Avaya Summary Build" {
+	//+ disabled = `true`,
+	inputs    = {
+		`SQL-Call-Log-SQL`,
+		`SQL-Call-Log-2-SQL`
+	},
+	processes = {
+		`Dates-CAL`,
+		`vdn-last3-CAL`,
+		`summary-SRT`,
+		`vdn-SRT`,
+		`Lookup-1-LKP`,
+		`Dates-Other-CAL`,
+		`client-vdn-SRT`,
+		`Time-CAL`,
+		`Totals-CAL`
+	},
+	output    = `avaya_summary-BLD`
+};
+
+object 'INPT' "SQL-Call-Log-SQL" {
+	//+ coordinatex = `8`,
+	//+ coordinatey = `8`,
+	input_type  = `sql`,
+	sql_source  = `callcenter`,
+	sql_query   = `SELECT * \r\n`
+		` FROM avaya_daily_summary \r\n`
+		` WHERE call_date >= '$(ccyymm_start)' and \r\n`
+		`   call_date < '$(ccyymm_end)'\r\n`
+		` ORDER BY vdn, call_date, call_hour;`,
+	aliases     = {
+		`abdn_calls=Aband Calls`,
+		`abdn_time=Avg Aband Time`,
+		`acd_calls=ACD Calls`,
+		`acpt_service_level=Acceptable Service Level`,
+		`avg_speed_answered=Avg Speed Answered`,
+		`avg_talk_hold=Avg Talk / Hold`,
+		`call_date=Call Date`,
+		`call_hour=Call Time-Hour`,
+		`call_offered=Calls Offered`,
+		`calls_busy_disc=Calls Busy / Disc`,
+		`conn_calls=Connected Calls`,
+		`flow_out=Flow Out`,
+		`pct_in_svc_level=Pct In Service Level`,
+		`switch_name=Switch`,
+		`vdn=VDN`,
+		`vdn_name=VDN Name`
+	}
+};
+
+object 'INPT' "SQL-Call-Log-2-SQL" {
+	//+ coordinatex = `8`,
+	//+ coordinatey = `108`,
+	input_type  = `sql`,
+	sql_source  = `callcenter`,
+	sql_query   = `SELECT vdn, client_acronym \r\n`
+		` FROM avaya_vdn \r\n`
+		` ORDER BY vdn`,
+	aliases     = {
+		`client_acronym=Client`,
+		`vdn=VDN`
+	}
+};
+
+object 'PROC' "Dates-CAL" {
+	//+ coordinatex = `83`,
+	//+ coordinatey = `8`,
+	process_type = `calc`,
+	calcs        = {
+		{
+			name  = `Call Date Year-Month`,
+			value = `concat(substr(Call Date,1,4), "-", substr(Call Date,5,2))`
+		},
+		{
+			name  = `Call Month`,
+			value = `substr(Call Date,5,2)`
+		},
+		{
+			name  = `Call Year`,
+			value = `substr(Call Date,1,4)`
+		},
+		{
+			name  = `Call Day`,
+			value = `substr(Call Date,7,2)`
+		},
+		{
+			name   = `Call Date`,
+			value  = `concat(substr(Call Date,1,4), "-", substr(Call Date,5,2), "-", substr(Call Date,7,2))`,
+			update = `true`
+		},
+		{
+			name  = `vdn_last3`,
+			value = `substr(VDN,2)`
+		}
+	},
+	input        = `SQL-Call-Log-SQL`
+};
+
+object 'PROC' "vdn-last3-CAL" {
+	//+ coordinatex = `83`,
+	//+ coordinatey = `108`,
+	process_type = `calc`,
+	input        = `SQL-Call-Log-2-SQL`,
+	calcs        = {
+		{
+			name  = `vdn_last3`,
+			value = `substr(VDN,2)`
+		}
+	}
+};
+
+object 'PROC' "summary-SRT" {
+	//+ coordinatex = `158`,
+	//+ coordinatey = `8`,
+	process_type = `sort`,
+	input        = `Dates-CAL`,
+	sort_columns = { `vdn_last3` }
+};
+
+object 'PROC' "vdn-SRT" {
+	//+ coordinatex = `158`,
+	//+ coordinatey = `108`,
+	process_type = `sort`,
+	sort_columns = { `vdn_last3` },
+	input        = `vdn-last3-CAL`
+};
+
+object 'PROC' "Lookup-1-LKP" {
+	//+ coordinatex = `258`,
+	//+ coordinatey = `33`,
+	process_type = `lookup`,
+	inputs       = {
+		`summary-SRT`,
+		`vdn-SRT`
+	},
+	multijoins   = {
+		{`vdn_last3`, `vdn_last3` }
+	},
+	join_type    = `inner`
+};
+
+object 'PROC' "Dates-Other-CAL" {
+	//+ coordinatex = `333`,
+	//+ coordinatey = `33`,
+	process_type = `calc`,
+	calcs        = {
+		{
+			name  = `Call Month Name`,
+			value = `month_name(Call Date)`
+		},
+		{
+			name  = `Call Quarter Year-Qtr`,
+			value = `concat(Call Year,"-Q",quarter(Call Date))`
+		},
+		{
+			name  = `Call Week Year-Week`,
+			value = `week_date(concat(Call Year, "-", Call Month, "-", Call Day))`
+		},
+		{
+			name  = `Day of Week`,
+			value = `mod(date_value(Call Date) -1,7)`
+		},
+		{
+			name  = `Call Day of Week`,
+			value = `concat(if(Day of Week = 0, 7, Day of Week), " - " , day_name(Call Date))`
+		},
+		{
+			name  = `VDN - Call Date - Time-Hour`,
+			value = `concat(VDN, " - ", Call Date, " @ ", lpad(Call Time-Hour,2,"0"))`
+		}
+	},
+	input        = `Lookup-1-LKP`
+};
+
+object 'PROC' "client-vdn-SRT" {
+	//+ coordinatex = `558`,
+	//+ coordinatey = `33`,
+	process_type = `sort`,
+	input        = `Totals-CAL`,
+	sort_columns = { `Client`, `VDN` }
+};
+
+object 'PROC' "Time-CAL" {
+	//+ coordinatex = `408`,
+	//+ coordinatey = `33`,
+	process_type = `calc`,
+	input        = `Dates-Other-CAL`,
+	calcs        = {
+		{
+			name   = `Avg Aband Time -TV`,
+			value  = `time_value(format_time(Avg Aband Time,"MM:SS"))`,
+			update = `true`
+		},
+		{
+			name   = `Avg Speed Answered - TV`,
+			value  = `time_value(format_time(Avg Speed Answered,"MM:SS"))`,
+			update = `true`
+		},
+		{
+			name   = `Avg Talk / Hold - TV`,
+			value  = `time_value(format_time(Avg Talk / Hold,"MM:SS"))`,
+			update = `true`
+		},
+		{
+			name   = `Call Time-Hour`,
+			value  = `concat(lpad(Call Time-Hour,2,"0"),":", "00")`,
+			update = `true`
+		}
+	}
+};
+
+object 'PROC' "Totals-CAL" {
+	//+ coordinatex = `483`,
+	//+ coordinatey = `33`,
+	process_type = `calc`,
+	input        = `Time-CAL`,
+	calcs        = {
+		{
+			name  = `Total Aband`,
+			value = `Avg Aband Time -TV * Aband Calls`
+		},
+		{
+			name  = `Total Speed Answered`,
+			value = `Avg Speed Answered - TV * ACD Calls`
+		},
+		{
+			name  = `Total Talk / Hold`,
+			value = `Avg Talk / Hold - TV * ACD Calls`
+		}
+	}
+};
+
+object 'OUTP' "avaya_summary-BLD" {
+	//+ coordinatex = `633`,
+	//+ coordinatey = `33`,
+	output_type = `builder`,
+	builtin     = `true`,
+	dimensions  = {
+		`Client`,
+		`Call Date`,
+		`Call Date Year-Month`,
+		`Call Time-Hour`,
+		`Call Day of Week`,
+		`VDN`,
+		`VDN - Call Date - Time-Hour`
+	},
+	output      = `../models/avaya_summary_$(ccyymm).mdl`,
+	journal     = `../logs/avaya_summary_build_$(ccyymm)`,
+	info        = {
+		`Call Year:Call Date Year-Month`,
+		`Call Month Name:Call Date Year-Month`,
+		`Call Quarter Year-Qtr:Call Date Year-Month`,
+		`Call Week Year-Week:Call Date`,
+		`VDN Name:VDN`,
+		`Acceptable Service Level:VDN`,
+		`Avg Aband Time:VDN - Call Date - Time-Hour`,
+		`Avg Speed Answered:VDN - Call Date - Time-Hour`,
+		`Avg Talk / Hold:VDN - Call Date - Time-Hour`,
+		`Pct In Service Level:VDN - Call Date - Time-Hour`,
+		`Call Day:Call Date`,
+		`Call Month:Call Date`
+	},
+	formats     = { `Call Date:YYYY-MM-DD` },
+	summary     = {
+		`Calls Offered`,
+		`ACD Calls`,
+		`Aband Calls`,
+		`Connected Calls`,
+		`Flow Out`,
+		`Calls Busy / Disc`,
+		`Total Aband`,
+		`Total Speed Answered`,
+		`Total Talk / Hold`
+	},
+	dates       = { `Call Date` },
+	input       = `client-vdn-SRT`
+};
+
+object 'XTSK' "Main" {
+	contents = {
+		`Generate ccyymm List`,
+		`Avaya Summary Build`
+	}
+};
